@@ -162,21 +162,21 @@ def main():
     model_wrapper.get_model_summary()
 
     # Initialize data loader with verification
-    #data_loader = DataLoader_ImageNet()
-    #train_loader, val_loader, test_loader = data_loader.load_data(DATA_PATH)
+    data_loader = DataLoader_ImageNet()
+    train_loader, val_loader, test_loader = data_loader.load_data(DATA_PATH)
 
     # Verify data loaders
-    #try:
-        #print(f"Number of test batches: {len(test_loader)}")
-        #sample_batch, sample_labels = next(iter(train_loader))
-        #print(f"Successfully loaded batch of shape: {sample_batch.shape}")
-        #print(f"Number of training batches: {len(train_loader)}")
-        #print(f"Number of validation batches: {len(val_loader)}")
-        #sample_batch = sample_batch.to(device)
-        #print(f"Data successfully moved to device: {sample_batch.device}")
-    #except Exception as e:
-        #print(f"Error in data loading verification: {str(e)}")
-        #raise
+    try:
+        print(f"Number of test batches: {len(test_loader)}")
+        sample_batch, sample_labels = next(iter(train_loader))
+        print(f"Successfully loaded batch of shape: {sample_batch.shape}")
+        print(f"Number of training batches: {len(train_loader)}")
+        print(f"Number of validation batches: {len(val_loader)}")
+        sample_batch = sample_batch.to(device)
+        print(f"Data successfully moved to device: {sample_batch.device}")
+    except Exception as e:
+        print(f"Error in data loading verification: {str(e)}")
+        raise
 
     # Initialize optimizer and scheduler
     optimizer = AdamW(model.parameters(), lr=LR, weight_decay=WEIGHT_DECAY)
@@ -217,26 +217,25 @@ def main():
     best_acc = 0
     for epoch in range(start_epoch, EPOCHS):
         print(f"\nEPOCH: {epoch+1}/{EPOCHS}")
-        train_loss = 0
-        #train(
-        #    model, device, train_loader, optimizer, scheduler, epoch, scaler
-        #)
+        train_loss = train(
+           model, device, train_loader, optimizer, scheduler, epoch, scaler
+        )
 
-        #accuracy = validate(model, device, val_loader)
-        # if accuracy > best_acc:
-        #     best_acc = accuracy
-        #     save_checkpoint(
-        #         s3_client=s3_client,
-        #         bucket_name=BUCKET_NAME,
-        #         model=model,
-        #         optimizer=optimizer,
-        #         scheduler=scheduler,
-        #         epoch=epoch,
-        #         loss=train_loss,
-        #         accuracy=accuracy,
-        #         checkpoint_dir=checkpoint_dir,
-        #         is_best=True,
-        #     )
+        accuracy = validate(model, device, val_loader)
+        if accuracy > best_acc:
+            best_acc = accuracy
+            save_checkpoint(
+                s3_client=s3_client,
+                bucket_name=BUCKET_NAME,
+                model=model,
+                optimizer=optimizer,
+                scheduler=scheduler,
+                epoch=epoch,
+                loss=train_loss,
+                accuracy=accuracy,
+                checkpoint_dir=checkpoint_dir,
+                is_best=True,
+            )
 
         # Save checkpoint every epoch
         save_checkpoint(
@@ -247,15 +246,14 @@ def main():
             scheduler,
             epoch,
             train_loss,
-            0,
-            #accuracy,
+            accuracy,
             checkpoint_dir,
         )
 
     # After training is complete, evaluate on test set
     print("\nEvaluating final model on test set:")
-    #test_accuracy = validate(model, device, test_loader)
-   # print(f"Final Test Accuracy: {test_accuracy:.2f}%")
+    test_accuracy = validate(model, device, test_loader)
+    print(f"Final Test Accuracy: {test_accuracy:.2f}%")
 
 
 if __name__ == "__main__":
