@@ -1,7 +1,6 @@
 import torch
 import torch.nn as nn
 from torchsummary import summary
-from train import Trainer
 
 class BasicBlock(nn.Module):
     expansion = 1
@@ -117,16 +116,3 @@ class ImageNetModel:
         # Convert device to string before passing to summary
         device_str = 'cuda' if self.device.type == 'cuda' else 'cpu'
         return summary(self.model, input_size, device=device_str)
-
-# Add this section at the end of the file
-if __name__ == "__main__":
-    print("Initializing ResNet50 model...")
-    print(f"Using device: {'cuda' if torch.cuda.is_available() else 'cpu'}")
-    
-    model = ImageNetModel()
-    print("\nModel Summary:")
-    model.get_model_summary() 
-    
-    trainer = Trainer(model)
-    trainer.load_data("/path/to/imagenet")
-    trainer.train()
