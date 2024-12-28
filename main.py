@@ -247,6 +247,7 @@ def main():
             scheduler,
             epoch,
             train_loss,
+            0,
             #accuracy,
             checkpoint_dir,
         )
