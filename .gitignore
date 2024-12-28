@@ -10,7 +10,6 @@ dist/
 downloads/
 eggs/
 .eggs/
-lib/
 lib64/
 parts/
 sdist/
@@ -103,3 +102,7 @@ dmypy.json
 
 # Profiling
 *.prof 
+
+# AWS CDK
+cdk.out/      
+node_modules/
