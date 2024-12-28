@@ -141,6 +141,8 @@ export class ImagenetStack extends cdk.Stack {
         interruptionBehavior: ec2.SpotInstanceInterruption.TERMINATE,
         maxPrice: 0.30,
       },
+      keyName: 'imagenet-train',
+      associatePublicIpAddress: true,
     });
 
     // Output the bucket name
