@@ -48,7 +48,7 @@ def save_checkpoint(
         print(f"Saved best model with accuracy: {accuracy:.2f}%")
 
 
-def get_latest_checkpoint(s3_client, bucket_name):
+def get_latest_checkpoint(s3_client, bucket_name, checkpoint_dir):
     try:
         objects = s3_client.list_objects_v2(Bucket=bucket_name, Prefix="checkpoints/")
         if "Contents" not in objects:
@@ -61,10 +61,10 @@ def get_latest_checkpoint(s3_client, bucket_name):
             return None
 
         latest = max(checkpoints, key=lambda x: int(x.split("_")[-1].split(".")[0]))
-        local_path = f"./checkpoints/{os.path.basename(latest)}"
+        local_path = f"{checkpoint_dir}/{os.path.basename(latest)}"
 
         # Download the checkpoint
-        os.makedirs("./checkpoints", exist_ok=True)
+        os.makedirs(checkpoint_dir, exist_ok=True)
         s3_client.download_file(bucket_name, latest, local_path)
         return local_path
     except Exception as e:
@@ -102,7 +102,7 @@ def train(model, device, train_loader, optimizer, scheduler, epoch, scaler):
 def validate(model, device, test_loader):
     model.eval()
     criterion = nn.CrossEntropyLoss()
-    test_loss = 0
+    loss = 0
     correct = 0
     total = 0
 
@@ -112,21 +112,46 @@ def validate(model, device, test_loader):
             outputs = model(inputs)
             loss = criterion(outputs, labels)
 
-            test_loss += loss.item()
+            loss += loss.item()
             _, predicted = outputs.max(1)
             total += labels.size(0)
             correct += predicted.eq(labels).sum().item()
 
     accuracy = 100.0 * correct / total
-    print(f"Test Loss: {test_loss/len(test_loader):.3f}, Accuracy: {accuracy:.2f}%")
+    print(f"Test Loss: {loss/len(test_loader):.3f}, Accuracy: {accuracy:.2f}%")
     return accuracy
 
 
 def main():
-    # Hyperparameters
-    EPOCHS = 100
-    LR = 0.01
-    WEIGHT_DECAY = 0.05
+    # Load hyperparameters from environment variables with defaults
+    EPOCHS = int(os.environ.get("TRAINING_EPOCHS", 100))
+    LR = float(os.environ.get("LEARNING_RATE", 0.01))
+    WEIGHT_DECAY = float(os.environ.get("WEIGHT_DECAY", 0.05))
+    DATA_PATH = os.environ.get("DATA_PATH", "/mnt/ebs_volume/data")
+    CHECKPOINT_DIR = os.environ.get("CHECKPOINT_DIR", "./checkpoints")
+    BUCKET_NAME = os.environ.get("BUCKET_NAME")
+    if not BUCKET_NAME:
+        raise ValueError("BUCKET_NAME environment variable must be set")
+
+    # Scheduler parameters
+    SCHEDULER_FACTOR = float(os.environ.get("SCHEDULER_FACTOR", 0.1))
+    SCHEDULER_PATIENCE = int(os.environ.get("SCHEDULER_PATIENCE", 10))
+    SCHEDULER_THRESHOLD = float(os.environ.get("SCHEDULER_THRESHOLD", 0.0001))
+    SCHEDULER_MIN_LR = float(os.environ.get("SCHEDULER_MIN_LR", 0))
+    SCHEDULER_EPS = float(os.environ.get("SCHEDULER_EPS", 1e-08))
+
+    # Print configuration
+    print("\nTraining Configuration:")
+    print(f"Epochs: {EPOCHS}")
+    print(f"Learning Rate: {LR}")
+    print(f"Weight Decay: {WEIGHT_DECAY}")
+    print(f"Data Path: {DATA_PATH}")
+    print(f"Checkpoint Directory: {CHECKPOINT_DIR}")
+    print(f"Scheduler Factor: {SCHEDULER_FACTOR}")
+    print(f"Scheduler Patience: {SCHEDULER_PATIENCE}")
+    print(f"Scheduler Threshold: {SCHEDULER_THRESHOLD}")
+    print(f"Scheduler Min LR: {SCHEDULER_MIN_LR}")
+    print(f"Scheduler Eps: {SCHEDULER_EPS}\n")
 
     # Initialize model
     model_wrapper = ImageNetModel()
@@ -138,23 +163,17 @@ def main():
 
     # Initialize data loader with verification
     data_loader = DataLoader_ImageNet()
-    train_loader, val_loader, test_loader = data_loader.load_data(
-        "/mnt/ebs_volume/data"
-    )
+    train_loader, val_loader, test_loader = data_loader.load_data(DATA_PATH)
 
     # Verify data loaders
     try:
         print(f"Number of test batches: {len(test_loader)}")
-        # Check if we can get a batch
         sample_batch, sample_labels = next(iter(train_loader))
         print(f"Successfully loaded batch of shape: {sample_batch.shape}")
         print(f"Number of training batches: {len(train_loader)}")
         print(f"Number of validation batches: {len(val_loader)}")
-
-        # Verify data is moving to GPU if available
         sample_batch = sample_batch.to(device)
         print(f"Data successfully moved to device: {sample_batch.device}")
-
     except Exception as e:
         print(f"Error in data loading verification: {str(e)}")
         raise
@@ -164,28 +183,28 @@ def main():
     scheduler = ReduceLROnPlateau(
         optimizer,
         mode="min",
-        factor=0.1,
-        patience=10,
-        verbose=True,  # Print message when LR changes
-        threshold=0.0001,
+        factor=SCHEDULER_FACTOR,
+        patience=SCHEDULER_PATIENCE,
+        verbose=True,
+        threshold=SCHEDULER_THRESHOLD,
         threshold_mode="rel",
         cooldown=0,
-        min_lr=0,
-        eps=1e-08,
+        min_lr=SCHEDULER_MIN_LR,
+        eps=SCHEDULER_EPS,
     )
 
     # Initialize gradient scaler for mixed precision
     scaler = GradScaler()
 
     # Create checkpoint directory
-    checkpoint_dir = Path("./checkpoints")
+    checkpoint_dir = Path(CHECKPOINT_DIR)
     checkpoint_dir.mkdir(exist_ok=True)
 
     # Load latest checkpoint if it exists
     start_epoch = 0
     s3_client = boto3.client("s3")
-    bucket_name = os.environ.get("BUCKET_NAME")
-    checkpoint_path = get_latest_checkpoint(s3_client, bucket_name)
+
+    checkpoint_path = get_latest_checkpoint(s3_client, BUCKET_NAME)
     if checkpoint_path:
         print(f"Loading checkpoint from {checkpoint_path}")
         checkpoint = torch.load(checkpoint_path)
@@ -196,19 +215,18 @@ def main():
 
     # Training loop
     best_acc = 0
-    for epoch in range(EPOCHS):
+    for epoch in range(start_epoch, EPOCHS):
         print(f"\nEPOCH: {epoch+1}/{EPOCHS}")
         train_loss = train(
             model, device, train_loader, optimizer, scheduler, epoch, scaler
         )
 
-        # Test doesn't need mixed precision
         accuracy = validate(model, device, val_loader)
         if accuracy > best_acc:
             best_acc = accuracy
             save_checkpoint(
                 s3_client=s3_client,
-                bucket_name=bucket_name,
+                bucket_name=BUCKET_NAME,
                 model=model,
                 optimizer=optimizer,
                 scheduler=scheduler,
@@ -222,7 +240,7 @@ def main():
         # Save checkpoint every epoch
         save_checkpoint(
             s3_client,
-            bucket_name,
+            BUCKET_NAME,
             model,
             optimizer,
             scheduler,
