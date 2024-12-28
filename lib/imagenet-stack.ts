@@ -46,23 +46,6 @@ export class ImagenetStack extends cdk.Stack {
       'Allow SSH access'
     );
 
-    // // Create EC2 spot instance for training
-    // const trainingInstance = new ec2.Instance(this, 'TrainingInstance', {
-    //   vpc,
-    //   instanceType: ec2.InstanceType.of(ec2.InstanceClass.G4DN, ec2.InstanceSize.XLARGE2),
-    //   machineImage: new ec2.AmazonLinuxImage({
-    //     generation: ec2.AmazonLinuxGeneration.AMAZON_LINUX_2,
-    //     cpuType: ec2.AmazonLinuxCpuType.X86_64,
-    //   }),
-    //   role,
-    //   securityGroup: sg,
-    //   keyName: 'training-key-pair',
-    //   blockDevices: [{
-    //     deviceName: '/dev/xvda',
-    //     volume: ec2.BlockDeviceVolume.ebs(300)
-    //   }]
-    // });
-
     // Create a separate EBS volume for dataset
     const dataVolume = new ec2.Volume(this, 'DataVolume', {
       availabilityZone: vpc.availabilityZones[0], // Use first AZ
@@ -72,22 +55,22 @@ export class ImagenetStack extends cdk.Stack {
     });
 
     // Create small t3.large instance for data upload
-    const uploadInstance = new ec2.Instance(this, 'UploadInstance', {
+    const trainingInstance = new ec2.Instance(this, 'TrainingInstance', {
       vpc,
       vpcSubnets: {
         subnetType: ec2.SubnetType.PUBLIC,
         availabilityZones: [vpc.availabilityZones[0]], // Must be in same AZ as volume
       },
-      instanceType: ec2.InstanceType.of(ec2.InstanceClass.T3, ec2.InstanceSize.LARGE),
+      instanceType: ec2.InstanceType.of(ec2.InstanceClass.G4DN, ec2.InstanceSize.XLARGE12),
       machineImage: ec2.MachineImage.genericLinux({
-        'ap-south-1': 'ami-053b12d3152c0cc71'
+        'ap-south-1': 'ami-0979d937ac9f81c9a'
       }),
       role,
       securityGroup: sg,
       keyName: 'imagenet-dataload',
       blockDevices: [{
         deviceName: '/dev/sda1', // Ubuntu uses different device naming
-        volume: ec2.BlockDeviceVolume.ebs(10)
+        volume: ec2.BlockDeviceVolume.ebs(80)
       }],
       associatePublicIpAddress: true
     });
@@ -95,7 +78,7 @@ export class ImagenetStack extends cdk.Stack {
     // Attach the volume to the instance
     new ec2.CfnVolumeAttachment(this, 'DataVolumeAttachment', {
       device: '/dev/sdf',
-      instanceId: uploadInstance.instanceId,
+      instanceId: trainingInstance.instanceId,
       volumeId: dataVolume.volumeId,
     });
 
@@ -103,7 +86,6 @@ export class ImagenetStack extends cdk.Stack {
     const uploadUserData = ec2.UserData.forLinux();
     uploadUserData.addCommands(
       'apt-get update',
-      'apt-get install -y python3-pip',
       'pip3 install boto3',
       `echo "export BUCKET_NAME=${bucket.bucketName}" >> /home/ubuntu/.bashrc`,
       
@@ -140,7 +122,7 @@ export class ImagenetStack extends cdk.Stack {
       'chown -R ubuntu:ubuntu /home/ubuntu'
     );
 
-    uploadInstance.addUserData(uploadUserData.render());
+    trainingInstance.addUserData(uploadUserData.render());
 
     // // Output both instance DNS names and bucket name
     // new cdk.CfnOutput(this, 'TrainingInstanceDNS', {
@@ -148,7 +130,7 @@ export class ImagenetStack extends cdk.Stack {
     // });
 
     new cdk.CfnOutput(this, 'UploadInstanceDNS', {
-      value: uploadInstance.instancePublicDnsName,
+      value: trainingInstance.instancePublicDnsName,
     });
 
     new cdk.CfnOutput(this, 'BucketName', {
