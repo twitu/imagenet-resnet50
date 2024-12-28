@@ -204,7 +204,7 @@ def main():
     start_epoch = 0
     s3_client = boto3.client("s3")
 
-    checkpoint_path = get_latest_checkpoint(s3_client, BUCKET_NAME)
+    checkpoint_path = get_latest_checkpoint(s3_client, BUCKET_NAME, checkpoint_dir)
     if checkpoint_path:
         print(f"Loading checkpoint from {checkpoint_path}")
         checkpoint = torch.load(checkpoint_path)
