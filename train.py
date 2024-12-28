@@ -7,54 +7,41 @@ from PIL import ImageFile, Image
 import io
 ImageFile.LOAD_TRUNCATED_IMAGES = True
 
-class StreamingTarImageFolder(Dataset):
-    def __init__(self, tar_files, transform=None):
-        self.tar_files = tar_files if isinstance(tar_files, list) else [tar_files]
+class ImageNetFolder(Dataset):
+    def __init__(self, root_dir, transform=None):
+        self.root_dir = root_dir
         self.transform = transform
         self.image_info = []
         self.classes = set()
         
-        # Just count files and collect classes first
-        for tar_path in self.tar_files:
-            with tarfile.open(tar_path, 'r:gz') as tar:
-                for member in tar.getmembers():
-                    if member.name.endswith(('.JPEG', '.jpg', '.jpeg')):
-                        class_name = member.name.split('/')[0]
-                        self.classes.add(class_name)
-                        self.image_info.append((tar_path, member.name))
+        # Scan directory for images
+        for filename in os.listdir(root_dir):
+            if filename.endswith(('.JPEG', '.jpg', '.jpeg')):
+                # Parse class ID from filename (e.g., 'n01644373' from ILSVRC2012_val_00017505_n01644373.JPEG)
+                class_name = filename.split('_')[-1].split('.')[0]
+                self.classes.add(class_name)
+                self.image_info.append(filename)
         
         self.classes = sorted(list(self.classes))
         self.class_to_idx = {cls: idx for idx, cls in enumerate(self.classes)}
-        
-        # Open file handles for streaming
-        self.tar_handles = {}
-        for tar_path in self.tar_files:
-            self.tar_handles[tar_path] = tarfile.open(tar_path, 'r:gz')
-            
+    
     def __len__(self):
         return len(self.image_info)
 
     def __getitem__(self, idx):
-        tar_path, member_name = self.image_info[idx]
-        tar = self.tar_handles[tar_path]
+        img_name = self.image_info[idx]
+        image_path = os.path.join(self.root_dir, img_name)
         
-        # Extract image
-        member = tar.getmember(member_name)
-        f = tar.extractfile(member)
-        image_data = f.read()
-        image = Image.open(io.BytesIO(image_data)).convert('RGB')
+        # Load image
+        image = Image.open(image_path).convert('RGB')
         
         if self.transform:
             image = self.transform(image)
             
-        class_name = member_name.split('/')[0]
+        # Get class name from filename
+        class_name = img_name.split('_')[-1].split('.')[0]
         label = self.class_to_idx[class_name]
         return image, label
-    
-    def __del__(self):
-        # Clean up tar handles
-        for handle in self.tar_handles.values():
-            handle.close()
 
 class DataLoader_ImageNet:
     def __init__(self, batch_size=256):
@@ -88,35 +75,25 @@ class DataLoader_ImageNet:
         
     def load_data(self, data_path):
         try:
-            # Collect all tar files
-            train_tars = sorted([
-                os.path.join(data_path, f) for f in os.listdir(data_path)
-                if f.startswith('train_images') and f.endswith('.tar.gz')
-            ])
+            train_dir = os.path.join(data_path, 'train')
+            val_dir = os.path.join(data_path, 'val')
+            test_dir = os.path.join(data_path, 'test')
             
-            val_tar = os.path.join(data_path, 'val_images.tar.gz')
-            test_tar = os.path.join(data_path, 'test_images.tar.gz')
-            
-            print("Found training files:", train_tars)
-            print("Found validation file:", val_tar)
-            print("Found test file:", test_tar)
-            
-            # Create datasets using streaming loader
             print("Loading training dataset...")
-            train_dataset = StreamingTarImageFolder(
-                tar_files=train_tars,
+            train_dataset = ImageNetFolder(
+                root_dir=train_dir,
                 transform=self.train_transform
             )
             
             print("Loading validation dataset...")
-            val_dataset = StreamingTarImageFolder(
-                tar_files=val_tar,
+            val_dataset = ImageNetFolder(
+                root_dir=val_dir,
                 transform=self.val_transform
             )
             
             print("Loading test dataset...")
-            test_dataset = StreamingTarImageFolder(
-                tar_files=test_tar,
+            test_dataset = ImageNetFolder(
+                root_dir=test_dir,
                 transform=self.test_transform
             )
             
