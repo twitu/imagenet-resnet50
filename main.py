@@ -1,13 +1,13 @@
 from model import ImageNetModel
 from torch.optim import AdamW
-from torch.optim.lr_scheduler import CosineAnnealingLR
+from torch.optim.lr_scheduler import ReduceLROnPlateau
 import torch.nn as nn
 from tqdm import tqdm
 import torch
 from train import DataLoader_ImageNet
 from torch.cuda.amp import autocast, GradScaler
 
-def train(model, device, train_loader, optimizer, epoch, scaler):
+def train(model, device, train_loader, optimizer, scheduler, epoch, scaler):
     model.train()
     criterion = nn.CrossEntropyLoss()
     pbar = tqdm(train_loader, desc=f'Epoch {epoch}')
@@ -17,20 +17,21 @@ def train(model, device, train_loader, optimizer, epoch, scaler):
         inputs, labels = inputs.to(device), labels.to(device)
         optimizer.zero_grad()
         
-        # Runs the forward pass with autocasting
         with autocast():
             outputs = model(inputs)
             loss = criterion(outputs, labels)
         
-        # Scales loss and calls backward() to create scaled gradients
         scaler.scale(loss).backward()
-        # Unscales gradients and calls or skips optimizer.step()
         scaler.step(optimizer)
-        # Updates the scale for next iteration
         scaler.update()
         
         running_loss += loss.item()
-        pbar.set_postfix({'loss': running_loss/len(train_loader)})
+        avg_loss = running_loss/len(train_loader)
+        pbar.set_postfix({'loss': avg_loss})
+    
+    # Step scheduler with average loss for the epoch
+    scheduler.step(avg_loss)
+    return avg_loss
 
 def test(model, device, test_loader):
     model.eval()
@@ -56,8 +57,8 @@ def test(model, device, test_loader):
 
 def main():
     # Hyperparameters
-    EPOCHS = 50
-    LR = 0.001
+    EPOCHS = 100
+    LR = 0.01
     WEIGHT_DECAY = 0.05
     
     # Initialize model
@@ -70,7 +71,7 @@ def main():
     
     # Initialize data loader with verification
     data_loader = DataLoader_ImageNet()
-    train_loader, val_loader = data_loader.load_data('/path/to/imagenet')
+    train_loader, val_loader = data_loader.load_data('/mnt/ebs_volume/data')
     
     # Verify data loaders
     try:
@@ -90,7 +91,18 @@ def main():
     
     # Initialize optimizer and scheduler
     optimizer = AdamW(model.parameters(), lr=LR, weight_decay=WEIGHT_DECAY)
-    scheduler = CosineAnnealingLR(optimizer, T_max=EPOCHS)
+    scheduler = ReduceLROnPlateau(
+        optimizer, 
+        mode='min',
+        factor=0.1,
+        patience=10,
+        verbose=True,  # Print message when LR changes
+        threshold=0.0001,
+        threshold_mode='rel',
+        cooldown=0,
+        min_lr=0,
+        eps=1e-08
+    )
     
     # Initialize gradient scaler for mixed precision
     scaler = GradScaler()
@@ -99,8 +111,7 @@ def main():
     best_acc = 0
     for epoch in range(EPOCHS):
         print(f"\nEPOCH: {epoch+1}/{EPOCHS}")
-        train(model, device, train_loader, optimizer, epoch, scaler)
-        scheduler.step()
+        train_loss = train(model, device, train_loader, optimizer, scheduler, epoch, scaler)
         
         # Test doesn't need mixed precision
         accuracy = test(model, device, val_loader)
@@ -110,7 +121,9 @@ def main():
                 'epoch': epoch,
                 'model_state_dict': model.state_dict(),
                 'optimizer_state_dict': optimizer.state_dict(),
+                'scheduler_state_dict': scheduler.state_dict(),
                 'accuracy': accuracy,
+                'loss': train_loss,
             }, 'best_model.pth')
 
 if __name__ == "__main__":
