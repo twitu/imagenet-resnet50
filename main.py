@@ -5,8 +5,9 @@ import torch.nn as nn
 from tqdm import tqdm
 import torch
 from train import DataLoader_ImageNet
+from torch.cuda.amp import autocast, GradScaler
 
-def train(model, device, train_loader, optimizer, epoch):
+def train(model, device, train_loader, optimizer, epoch, scaler):
     model.train()
     criterion = nn.CrossEntropyLoss()
     pbar = tqdm(train_loader, desc=f'Epoch {epoch}')
@@ -15,10 +16,18 @@ def train(model, device, train_loader, optimizer, epoch):
     for inputs, labels in pbar:
         inputs, labels = inputs.to(device), labels.to(device)
         optimizer.zero_grad()
-        outputs = model(inputs)
-        loss = criterion(outputs, labels)
-        loss.backward()
-        optimizer.step()
+        
+        # Runs the forward pass with autocasting
+        with autocast():
+            outputs = model(inputs)
+            loss = criterion(outputs, labels)
+        
+        # Scales loss and calls backward() to create scaled gradients
+        scaler.scale(loss).backward()
+        # Unscales gradients and calls or skips optimizer.step()
+        scaler.step(optimizer)
+        # Updates the scale for next iteration
+        scaler.update()
         
         running_loss += loss.item()
         pbar.set_postfix({'loss': running_loss/len(train_loader)})
@@ -83,14 +92,17 @@ def main():
     optimizer = AdamW(model.parameters(), lr=LR, weight_decay=WEIGHT_DECAY)
     scheduler = CosineAnnealingLR(optimizer, T_max=EPOCHS)
     
+    # Initialize gradient scaler for mixed precision
+    scaler = GradScaler()
+    
     # Training loop
     best_acc = 0
     for epoch in range(EPOCHS):
         print(f"\nEPOCH: {epoch+1}/{EPOCHS}")
-        train(model, device, train_loader, optimizer, epoch)
+        train(model, device, train_loader, optimizer, epoch, scaler)
         scheduler.step()
         
-        # Test and save best model
+        # Test doesn't need mixed precision
         accuracy = test(model, device, val_loader)
         if accuracy > best_acc:
             best_acc = accuracy
