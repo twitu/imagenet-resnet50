@@ -1,18 +1,25 @@
 import torch
-import torch.nn as nn
 from torch.utils.data import DataLoader
 from torchvision import datasets, transforms
-from tqdm import tqdm
+import os
+from PIL import ImageFile
+ImageFile.LOAD_TRUNCATED_IMAGES = True
 
-class Trainer:
-    def __init__(self, model, num_epochs=50):
-        self.model = model
-        self.num_epochs = num_epochs
-        self.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-        self.batch_size = 128 if torch.cuda.is_available() else 64
+class DataLoader_ImageNet:
+    def __init__(self, batch_size=256):
+        self.batch_size = batch_size if torch.cuda.is_available() else 32
         
-        # Define transforms
-        self.transform = transforms.Compose([
+        # Enhanced transforms for ImageNet
+        self.train_transform = transforms.Compose([
+            transforms.RandomResizedCrop(224),
+            transforms.RandomHorizontalFlip(),
+            transforms.ColorJitter(brightness=0.4, contrast=0.4, saturation=0.4),
+            transforms.ToTensor(),
+            transforms.Normalize(mean=[0.485, 0.456, 0.406],
+                             std=[0.229, 0.224, 0.225])
+        ])
+        
+        self.val_transform = transforms.Compose([
             transforms.Resize(256),
             transforms.CenterCrop(224),
             transforms.ToTensor(),
@@ -21,72 +28,67 @@ class Trainer:
         ])
         
     def load_data(self, data_path):
-        # Load ImageNet dataset
-        train_dataset = datasets.ImageNet(
-            root=data_path,
-            split='train',
-            transform=self.transform
-        )
-        
-        val_dataset = datasets.ImageNet(
-            root=data_path,
-            split='val',
-            transform=self.transform
-        )
-        
-        self.train_loader = DataLoader(
-            train_dataset,
-            batch_size=self.batch_size,
-            shuffle=True,
-            num_workers=4
-        )
-        
-        self.val_loader = DataLoader(
-            val_dataset,
-            batch_size=self.batch_size,
-            shuffle=False,
-            num_workers=4
-        )
-    
-    def train(self):
-        criterion = nn.CrossEntropyLoss()
-        optimizer = torch.optim.Adam(self.model.parameters())
-        
-        for epoch in range(self.num_epochs):
-            self.model.train()
-            running_loss = 0.0
+        try:
+            train_dir = os.path.join(data_path, 'train')
+            val_dir = os.path.join(data_path, 'val')
             
-            # Create progress bar
-            pbar = tqdm(self.train_loader, desc=f'Epoch {epoch+1}/{self.num_epochs}')
+            # Add more detailed directory checking
+            print(f"Checking directory structure...")
+            print(f"Train directory exists: {os.path.exists(train_dir)}")
+            print(f"Val directory exists: {os.path.exists(val_dir)}")
             
-            for inputs, labels in pbar:
-                inputs, labels = inputs.to(self.device), labels.to(self.device)
+            if os.path.exists(train_dir):
+                sample_classes = os.listdir(train_dir)[:5]
+                print(f"Sample training classes found: {sample_classes}")
                 
-                optimizer.zero_grad()
-                outputs = self.model(inputs)
-                loss = criterion(outputs, labels)
-                loss.backward()
-                optimizer.step()
-                
-                running_loss += loss.item()
-                pbar.set_postfix({'loss': running_loss/len(self.train_loader)})
+            if not (os.path.exists(train_dir) and os.path.exists(val_dir)):
+                raise FileNotFoundError(
+                    f"Training or validation directory not found in {data_path}. "
+                    f"Expected {train_dir} and {val_dir}"
+                )
             
-            # Validation phase
-            self.model.eval()
-            val_loss = 0.0
-            correct = 0
-            total = 0
+            print(f"Loading training data from: {train_dir}")
+            train_dataset = datasets.ImageFolder(
+                root=train_dir,
+                transform=self.train_transform
+            )
             
-            with torch.no_grad():
-                for inputs, labels in self.val_loader:
-                    inputs, labels = inputs.to(self.device), labels.to(self.device)
-                    outputs = self.model(inputs)
-                    loss = criterion(outputs, labels)
-                    
-                    val_loss += loss.item()
-                    _, predicted = outputs.max(1)
-                    total += labels.size(0)
-                    correct += predicted.eq(labels).sum().item()
+            print(f"Loading validation data from: {val_dir}")
+            val_dataset = datasets.ImageFolder(
+                root=val_dir,
+                transform=self.val_transform
+            )
             
-            print(f'Validation Loss: {val_loss/len(self.val_loader):.3f}, '
-                  f'Accuracy: {100.*correct/total:.2f}%') 
+            num_workers = min(8, os.cpu_count())
+            
+            self.train_loader = DataLoader(
+                train_dataset,
+                batch_size=self.batch_size,
+                shuffle=True,
+                num_workers=num_workers,
+                pin_memory=True,
+                persistent_workers=True,
+                prefetch_factor=2
+            )
+            
+            self.val_loader = DataLoader(
+                val_dataset,
+                batch_size=self.batch_size,
+                shuffle=False,
+                num_workers=num_workers,
+                pin_memory=True,
+                persistent_workers=True,
+                prefetch_factor=2
+            )
+            
+            print(f"Dataset loaded successfully!")
+            print(f"Number of training samples: {len(train_dataset)}")
+            print(f"Number of validation samples: {len(val_dataset)}")
+            print(f"Number of classes: {len(train_dataset.classes)}")
+            print(f"Using {num_workers} workers for data loading")
+            
+            return self.train_loader, self.val_loader
+            
+        except Exception as e:
+            print(f"Error loading dataset: {str(e)}")
+            raise
