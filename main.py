@@ -71,10 +71,11 @@ def main():
     
     # Initialize data loader with verification
     data_loader = DataLoader_ImageNet()
-    train_loader, val_loader = data_loader.load_data('/mnt/ebs_volume/data')
+    train_loader, val_loader, test_loader = data_loader.load_data('/mnt/ebs_volume/data')
     
     # Verify data loaders
     try:
+        print(f"Number of test batches: {len(test_loader)}")
         # Check if we can get a batch
         sample_batch, sample_labels = next(iter(train_loader))
         print(f"Successfully loaded batch of shape: {sample_batch.shape}")
@@ -125,6 +126,11 @@ def main():
                 'accuracy': accuracy,
                 'loss': train_loss,
             }, 'best_model.pth')
+
+    # After training is complete, evaluate on test set
+    print("\nEvaluating final model on test set:")
+    test_accuracy = test(model, device, test_loader)
+    print(f"Final Test Accuracy: {test_accuracy:.2f}%")
 
 if __name__ == "__main__":
     main() 
