@@ -217,9 +217,9 @@ def main():
     best_acc = 0
     for epoch in range(start_epoch, EPOCHS):
         print(f"\nEPOCH: {epoch+1}/{EPOCHS}")
-        train_loss = train(
-            model, device, train_loader, optimizer, scheduler, epoch, scaler
-        )
+        #train_loss = train(
+        #    model, device, train_loader, optimizer, scheduler, epoch, scaler
+        #)
 
         accuracy = validate(model, device, val_loader)
         if accuracy > best_acc:
