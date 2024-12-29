@@ -94,40 +94,43 @@ export class ImagenetStack extends cdk.Stack {
       'ls -l /dev/nvme*',
 
       // Create mount directory
-      'sudo mkdir -p /mnt/training_data',
+      'mkdir -p /mnt/training_data',
 
       // Set permissions
-      'sudo chown -R ubuntu:ubuntu /mnt/training_data',
-      'sudo chown -R ubuntu:ubuntu /home/ubuntu',
+      'chown -R ubuntu:ubuntu /mnt/training_data',
+      'chown -R ubuntu:ubuntu /home/ubuntu',
 
       // Mount volume
-      'sudo mount /dev/nvme2n1 /mnt/training_data',
+      'mount /dev/nvme2n1 /mnt/training_data',
       'df -h /mnt/training_data',
 
       // Clone and setup repository
       'cd /home/ubuntu',
+      // switch to ubuntu user
+      'su - ubuntu',
       'git clone https://github.com/twitu/imagenet-resnet50.git',
 
       // Start training as ubuntu user with environment variables
+      'python3 -m pip install --user virtualenv',
       'python3 -m venv .venv',
-      'source .venv/bin/activate',
-      'pip3 install -r imagenet-resnet50/requirements.txt',
 
       // Set environment variables
-      `echo "export BUCKET_NAME=${bucket.bucketName}"`,
-      'echo "export DATA_PATH=/mnt/training_data/data"',
-      'echo "export CHECKPOINT_DIR=/mnt/training_data/checkpoints"',
-      'echo "export TRAINING_EPOCHS=100"',
-      'echo "export LEARNING_RATE=0.01"',
-      'echo "export WEIGHT_DECAY=0.05"',
+      `echo "export BUCKET_NAME=${bucket.bucketName}" >> .venv/bin/activate`,
+      'echo "export DATA_PATH=/mnt/training_data/data >> .venv/bin/activate"',
+      'echo "export CHECKPOINT_DIR=/mnt/training_data/checkpoints >> .venv/bin/activate"',
+      'echo "export TRAINING_EPOCHS=100 >> .venv/bin/activate"',
+      'echo "export LEARNING_RATE=0.01 >> .venv/bin/activate"',
+      'echo "export WEIGHT_DECAY=0.05 >> .venv/bin/activate"',
+      'source .venv/bin/activate',
 
+      'pip3 install -r imagenet-resnet50/requirements.txt',
       'cd imagenet-resnet50',
       'python3 main.py > training.log 2>&1 &"'
     );
 
     // Create launch template
     new ec2.LaunchTemplate(this, 'TrainingLaunchTemplate', {
-      instanceType: ec2.InstanceType.of(ec2.InstanceClass.G4DN, ec2.InstanceSize.XLARGE2),
+      instanceType: ec2.InstanceType.of(ec2.InstanceClass.G4DN, ec2.InstanceSize.XLARGE8),
       machineImage: ec2.MachineImage.genericLinux({
         'ap-south-1': 'ami-0979d937ac9f81c9a'
       }),
@@ -141,7 +144,7 @@ export class ImagenetStack extends cdk.Stack {
       spotOptions: {
         requestType: ec2.SpotRequestType.PERSISTENT,
         interruptionBehavior: ec2.SpotInstanceInterruption.STOP,
-        maxPrice: 0.30,
+        maxPrice: 0.60,
         validUntil: cdk.Expiration.after(cdk.Duration.days(3)),
       },
       keyName: 'imagenet-train',
