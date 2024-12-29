@@ -4,7 +4,7 @@ from torch.optim.lr_scheduler import ReduceLROnPlateau
 import torch.nn as nn
 from tqdm import tqdm
 import torch
-from train import DataLoader_ImageNet
+from data_loader import DataLoader_ImageNet
 from torch.cuda.amp import autocast, GradScaler
 import os
 import boto3
@@ -55,7 +55,7 @@ def get_latest_checkpoint(s3_client, bucket_name, checkpoint_dir):
             return None
 
         checkpoints = [
-            obj["Key"] for obj in objects["Contents"] if obj["Key"].endswith(".pt")
+            obj["Key"] for obj in objects["Contents"] if obj["Key"].endswith(".pt") and "best" not in obj["Key"]
         ]
         if not checkpoints:
             return None
