@@ -107,19 +107,21 @@ export class ImagenetStack extends cdk.Stack {
       // Clone and setup repository
       'cd /home/ubuntu',
       'git clone https://github.com/twitu/imagenet-resnet50.git',
-      'cd imagenet-resnet50',
-      'pip3 install -r requirements.txt',
-
-      // Set environment variables
-      `echo "export BUCKET_NAME=${bucket.bucketName}" >> /home/ubuntu/.bashrc`,
-      'echo "export DATA_PATH=/mnt/training_data/data" >> /home/ubuntu/.bashrc',
-      'echo "export CHECKPOINT_DIR=/mnt/training_data/checkpoints" >> /home/ubuntu/.bashrc',
-      'echo "export TRAINING_EPOCHS=100" >> /home/ubuntu/.bashrc',
-      'echo "export LEARNING_RATE=0.01" >> /home/ubuntu/.bashrc',
-      'echo "export WEIGHT_DECAY=0.05" >> /home/ubuntu/.bashrc',
-      'source /home/ubuntu/.bashrc',
 
       // Start training as ubuntu user with environment variables
+      'python3 -m venv .venv',
+      'source .venv/bin/activate',
+      'pip3 install -r imagenet-resnet50/requirements.txt',
+
+      // Set environment variables
+      `echo "export BUCKET_NAME=${bucket.bucketName}"`,
+      'echo "export DATA_PATH=/mnt/training_data/data"',
+      'echo "export CHECKPOINT_DIR=/mnt/training_data/checkpoints"',
+      'echo "export TRAINING_EPOCHS=100"',
+      'echo "export LEARNING_RATE=0.01"',
+      'echo "export WEIGHT_DECAY=0.05"',
+
+      'cd imagenet-resnet50',
       'python3 main.py > training.log 2>&1 &"'
     );
 
@@ -138,8 +140,9 @@ export class ImagenetStack extends cdk.Stack {
       role,
       spotOptions: {
         requestType: ec2.SpotRequestType.PERSISTENT,
-        interruptionBehavior: ec2.SpotInstanceInterruption.TERMINATE,
+        interruptionBehavior: ec2.SpotInstanceInterruption.STOP,
         maxPrice: 0.30,
+        validUntil: cdk.Expiration.after(cdk.Duration.days(3)),
       },
       keyName: 'imagenet-train',
       associatePublicIpAddress: true,
