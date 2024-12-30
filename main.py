@@ -125,7 +125,7 @@ def validate(model, device, test_loader):
 def main():
     # Load hyperparameters from environment variables with defaults
     EPOCHS = int(os.environ.get("TRAINING_EPOCHS", 100))
-    LR = float(os.environ.get("LEARNING_RATE", 0.01))
+    LR = float(os.environ.get("LEARNING_RATE", 0.1))
     WEIGHT_DECAY = float(os.environ.get("WEIGHT_DECAY", 0.05))
     DATA_PATH = os.environ.get("DATA_PATH", "/mnt/training_data/data")
     CHECKPOINT_DIR = os.environ.get("CHECKPOINT_DIR", "/mnt/training_data/checkpoints")
@@ -181,17 +181,28 @@ def main():
     # Initialize optimizer and scheduler
     #optimizer = AdamW(model.parameters(), lr=LR, weight_decay=WEIGHT_DECAY)
     optimizer = SGD(model.parameters(), lr=LR, momentum=0.9, weight_decay=WEIGHT_DECAY)
-    scheduler = ReduceLROnPlateau(
+    # scheduler = ReduceLROnPlateau(
+    #     optimizer,
+    #     mode="min",
+    #     factor=SCHEDULER_FACTOR,
+    #     patience=SCHEDULER_PATIENCE,
+    #     verbose=True,
+    #     threshold=SCHEDULER_THRESHOLD,
+    #     threshold_mode="rel",
+    #     cooldown=0,
+    #     min_lr=SCHEDULER_MIN_LR,
+    #     eps=SCHEDULER_EPS,
+    # )
+    TOTAL_STEPS = len(train_loader)*EPOCHS # (total no. of images/batch size) * epochs
+    scheduler = OneCycleLR(
         optimizer,
-        mode="min",
-        factor=SCHEDULER_FACTOR,
-        patience=SCHEDULER_PATIENCE,
-        verbose=True,
-        threshold=SCHEDULER_THRESHOLD,
-        threshold_mode="rel",
-        cooldown=0,
-        min_lr=SCHEDULER_MIN_LR,
-        eps=SCHEDULER_EPS,
+        max_lr = LR,
+        total_steps = TOTAL_STEPS,
+        pct_start=0.3,
+        anneal_strategy='cos',
+        cycle_momentum=False,  
+        max_momentum=0.95,  
+        min_momentum=0.85, 
     )
 
     # Initialize gradient scaler for mixed precision
