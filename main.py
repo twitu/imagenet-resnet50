@@ -179,7 +179,8 @@ def main():
         raise
 
     # Initialize optimizer and scheduler
-    optimizer = AdamW(model.parameters(), lr=LR, weight_decay=WEIGHT_DECAY)
+    #optimizer = AdamW(model.parameters(), lr=LR, weight_decay=WEIGHT_DECAY)
+    optimizer = SGD(model.parameters(), lr=LR, momentum=0.9, weight_decay=WEIGHT_DECAY)
     scheduler = ReduceLROnPlateau(
         optimizer,
         mode="min",

@@ -1,6 +1,7 @@
 import torch
 import torch.nn as nn
 from torchsummary import summary
+from torch.nn.parallel import DataParallel
 
 class BasicBlock(nn.Module):
     expansion = 1
@@ -110,6 +111,10 @@ class ImageNetModel:
     def __init__(self):
         self.model = ResNet50()
         self.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+        if torch.cuda.device_count() > 1:
+            print(f"Using {torch.cuda.device_count()} GPUs!")
+            # Wrap model with DataParallel
+            self.model = DataParallel(self.model)
         self.model.to(self.device)
     
     def get_model_summary(self, input_size=(3, 224, 224)):
