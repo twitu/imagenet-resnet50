@@ -127,8 +127,8 @@ def main():
     EPOCHS = int(os.environ.get("TRAINING_EPOCHS", 100))
     LR = float(os.environ.get("LEARNING_RATE", 0.01))
     WEIGHT_DECAY = float(os.environ.get("WEIGHT_DECAY", 0.05))
-    DATA_PATH = os.environ.get("DATA_PATH", "/mnt/ebs_volume/data")
-    CHECKPOINT_DIR = os.environ.get("CHECKPOINT_DIR", "./checkpoints")
+    DATA_PATH = os.environ.get("DATA_PATH", "/mnt/training_data/data")
+    CHECKPOINT_DIR = os.environ.get("CHECKPOINT_DIR", "/mnt/training_data/checkpoints")
     BUCKET_NAME = os.environ.get("BUCKET_NAME")
     if not BUCKET_NAME:
         raise ValueError("BUCKET_NAME environment variable must be set")

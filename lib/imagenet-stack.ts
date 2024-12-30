@@ -106,21 +106,16 @@ export class ImagenetStack extends cdk.Stack {
 
       // Clone and setup repository
       'cd /home/ubuntu',
+      'apt install python3.10-venv -y',
       // switch to ubuntu user
       'su - ubuntu',
       'git clone https://github.com/twitu/imagenet-resnet50.git',
 
       // Start training as ubuntu user with environment variables
-      'python3 -m pip install --user virtualenv',
       'python3 -m venv .venv',
 
       // Set environment variables
       `echo "export BUCKET_NAME=${bucket.bucketName}" >> .venv/bin/activate`,
-      'echo "export DATA_PATH=/mnt/training_data/data >> .venv/bin/activate"',
-      'echo "export CHECKPOINT_DIR=/mnt/training_data/checkpoints >> .venv/bin/activate"',
-      'echo "export TRAINING_EPOCHS=100 >> .venv/bin/activate"',
-      'echo "export LEARNING_RATE=0.01 >> .venv/bin/activate"',
-      'echo "export WEIGHT_DECAY=0.05 >> .venv/bin/activate"',
       'source .venv/bin/activate',
 
       'pip3 install -r imagenet-resnet50/requirements.txt',
