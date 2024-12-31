@@ -106,3 +106,6 @@ dmypy.json
 # AWS CDK
 cdk.out/      
 node_modules/
+
+# Pyc
+*.pyc
